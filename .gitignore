@@ -1,0 +1,44 @@
+# Environment variables
+.env
+.env.local
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+trading_bot.log
+
+# Models and data
+models/
+data/
+*.h5
+*.pkl
+*.csv
+
+# Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# API keys and sensitive data
+*.key
+*.pem
+secrets.json
