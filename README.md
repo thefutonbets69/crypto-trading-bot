@@ -62,29 +62,37 @@ RISK_PER_TRADE=0.02  # 2% risk per trade
 PREDICTION_THRESHOLD=0.55  # Confidence threshold
 
 # Model
-MODEL_PATH=./models/trading_model.h5
+MODEL_PATH=./models/trading_model.keras
 LOOKBACK_WINDOW=60  # Number of candles for input
 ```
 
 ## Quick Start
 
-### Run the Bot
+### 1. Train the Model (do this first)
+
+Without this step the bot runs with an untrained, randomly-initialized
+network and its predictions are close to a coin flip. `train.py` fetches
+real historical candles for your configured `SYMBOL`/`TIMEFRAME` from the
+exchange's public API (no API key needed for this step) and trains + saves
+the model to `MODEL_PATH`:
+
+```bash
+python train.py --epochs 50 --candles 2000
+```
+
+### 2. Run the Bot
 
 ```bash
 python bot.py
 ```
 
-### Train the Model (Optional)
+This runs continuously — one trading cycle per candle (e.g. every hour for
+`TIMEFRAME=1h`), or every `POLL_INTERVAL_SECONDS` if you set that instead.
+Press `Ctrl+C` to stop; it prints a final stats summary on exit.
 
-```python
-from model import CryptoTradingModel
-import numpy as np
-
-model = CryptoTradingModel()
-historical_prices = np.array([...])  # Your price data
-model.train(historical_prices, epochs=50)
-model.save_model('./models/trading_model.h5')
-```
+By default the bot runs in **paper trading** mode: it simulates fills
+against live prices and never sends orders to the exchange, and it doesn't
+require API keys. To place real orders, see [Going Live](#going-live) below.
 
 ## How It Works
 
@@ -111,6 +119,21 @@ Price Data (60 candles) → LSTM Layer → Dropout → LSTM Layer → Dropout �
 - **Take Profit**: +10% from entry price
 - **Max Position**: Limited by account balance and risk parameters
 
+## Going Live
+
+Real order execution is off by default. It requires **both** of these set
+in `.env`:
+
+```env
+LIVE_TRADING=true
+CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND_THE_RISK
+```
+
+If `LIVE_TRADING=true` without the exact confirmation string, the bot
+refuses to start rather than silently falling back to paper trading. Only
+enable this with API keys that have trading (not withdrawal) permissions,
+after you've watched the bot run in paper mode and reviewed its decisions.
+
 ## Configuration
 
 ### Environment Variables
@@ -120,10 +143,13 @@ Price Data (60 candles) → LSTM Layer → Dropout → LSTM Layer → Dropout �
 | `EXCHANGE` | binance | CCXT exchange name |
 | `SYMBOL` | BTC/USDT | Trading pair |
 | `TIMEFRAME` | 1h | Candle timeframe |
+| `POLL_INTERVAL_SECONDS` | (matches TIMEFRAME) | Seconds between trading cycles |
+| `LIVE_TRADING` | false | Set true to place real orders (see Going Live) |
+| `CONFIRM_LIVE_TRADING` | (unset) | Must equal `YES_I_UNDERSTAND_THE_RISK` when LIVE_TRADING=true |
 | `RISK_PER_TRADE` | 0.02 | Risk percentage per trade |
 | `PREDICTION_THRESHOLD` | 0.55 | Model confidence threshold |
 | `LOOKBACK_WINDOW` | 60 | Historical candles for prediction |
-| `MODEL_PATH` | ./models/trading_model.h5 | Trained model location |
+| `MODEL_PATH` | ./models/trading_model.keras | Trained model location |
 
 ## API Keys Setup
 

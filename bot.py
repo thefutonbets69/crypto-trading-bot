@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from datetime import datetime
 from typing import Optional, Dict
@@ -7,6 +8,12 @@ import ccxt
 import numpy as np
 import pandas as pd
 from model import CryptoTradingModel
+
+TIMEFRAME_SECONDS = {
+    '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+    '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800,
+    '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800,
+}
 
 # Load environment variables
 load_dotenv()
@@ -38,22 +45,44 @@ class CryptoTradingBot:
         self.timeframe = os.getenv('TIMEFRAME', '1h')
         self.risk_per_trade = float(os.getenv('RISK_PER_TRADE', 0.02))
         self.prediction_threshold = float(os.getenv('PREDICTION_THRESHOLD', 0.55))
-        
+
+        # Safety gate: real orders only fire when BOTH of these are set.
+        # This defaults to paper trading (simulated fills, no exchange calls)
+        # so the bot is safe to run before you trust the model's predictions.
+        self.live_trading = os.getenv('LIVE_TRADING', 'false').lower() == 'true'
+        confirmed = os.getenv('CONFIRM_LIVE_TRADING', '') == 'YES_I_UNDERSTAND_THE_RISK'
+        if self.live_trading and not confirmed:
+            raise RuntimeError(
+                "LIVE_TRADING=true but CONFIRM_LIVE_TRADING is not set to "
+                "'YES_I_UNDERSTAND_THE_RISK'. Refusing to start with real "
+                "orders enabled. Set CONFIRM_LIVE_TRADING explicitly in your "
+                ".env once you've reviewed the risk, or leave LIVE_TRADING=false "
+                "to keep running in paper-trading mode."
+            )
+
         # Initialize exchange
         self.exchange = self._init_exchange()
-        
+
         # Initialize ML model
-        model_path = os.getenv('MODEL_PATH', './models/trading_model.h5')
+        model_path = os.getenv('MODEL_PATH', './models/trading_model.keras')
         lookback = int(os.getenv('LOOKBACK_WINDOW', 60))
         self.model = CryptoTradingModel(lookback_window=lookback, model_path=model_path)
-        
+        if not os.path.exists(model_path):
+            logger.warning(
+                f"No trained model found at {model_path}. Running with a freshly "
+                "initialized, untrained network -- predictions will be close to "
+                "random. Run `python train.py` first to fetch history and train."
+            )
+
         # Trading state
         self.position = None  # 'long', 'short', or None
         self.entry_price = None
+        self.position_size = None
         self.balance = float(os.getenv('INITIAL_BALANCE', 1000))
         self.trades_history = []
-        
-        logger.info(f"Trading bot initialized for {self.symbol} on {self.exchange_name}")
+
+        mode = "LIVE (real orders)" if self.live_trading else "PAPER (simulated)"
+        logger.info(f"Trading bot initialized for {self.symbol} on {self.exchange_name} [{mode}]")
     
     def _init_exchange(self) -> ccxt.Exchange:
         """
@@ -169,15 +198,22 @@ class CryptoTradingBot:
         """
         try:
             position_size = self.calculate_position_size(current_price)
-            
-            # For backtesting, simulate the order
+
+            if self.live_trading:
+                order = self.exchange.create_market_buy_order(self.symbol, position_size)
+                logger.info(f"LIVE BUY order placed: {order.get('id', order)}")
+            else:
+                logger.info(
+                    f"BUY signal at {current_price} (confidence: {prediction:.2%}), "
+                    f"position size: {position_size:.4f} [paper trade]"
+                )
+
             self.position = 'long'
             self.entry_price = current_price
+            self.position_size = position_size
             self.balance -= position_size * current_price
-            
-            logger.info(f"BUY signal at {current_price} (confidence: {prediction:.2%}), position size: {position_size:.4f}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error executing buy order: {e}")
             return False
@@ -196,16 +232,20 @@ class CryptoTradingBot:
         try:
             if self.position != 'long' or self.entry_price is None:
                 return False
-            
+
             # Calculate P&L
             profit_loss = (current_price - self.entry_price) * (self.balance / self.entry_price)
             profit_loss_pct = (current_price - self.entry_price) / self.entry_price * 100
-            
-            # For backtesting, simulate the order
+
+            if self.live_trading:
+                order = self.exchange.create_market_sell_order(self.symbol, self.position_size)
+                logger.info(f"LIVE SELL order placed: {order.get('id', order)}")
+
             self.balance += (self.balance / self.entry_price) * current_price
             self.position = None
             self.entry_price = None
-            
+            self.position_size = None
+
             trade = {
                 'timestamp': datetime.now(),
                 'profit_loss': profit_loss,
@@ -275,18 +315,24 @@ class CryptoTradingBot:
 
 def main():
     """
-    Main entry point for the trading bot.
+    Main entry point for the trading bot. Runs continuously, one trading
+    cycle per candle interval, until interrupted with Ctrl+C.
     """
     try:
         bot = CryptoTradingBot()
-        logger.info("Starting trading bot...")
-        
-        # Run trading cycle (in production, this would run in a loop with timing)
-        bot.run_trading_cycle()
-        
-        # Print statistics
+        interval = int(os.getenv(
+            'POLL_INTERVAL_SECONDS',
+            TIMEFRAME_SECONDS.get(bot.timeframe, 3600)
+        ))
+        logger.info(f"Starting trading bot (cycle every {interval}s). Press Ctrl+C to stop.")
+
+        while True:
+            bot.run_trading_cycle()
+            time.sleep(interval)
+
+    except KeyboardInterrupt:
+        logger.info("Stopping trading bot (Ctrl+C received)...")
         bot.print_stats()
-        
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         raise
