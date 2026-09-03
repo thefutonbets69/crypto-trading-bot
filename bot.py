@@ -41,8 +41,8 @@ class CryptoTradingBot:
         Initialize the trading bot with exchange connection and model.
         """
         # Load configuration from environment
-        self.exchange_name = os.getenv('EXCHANGE', 'binance')
-        self.symbol = os.getenv('SYMBOL', 'BTC/USDT')
+        self.exchange_name = os.getenv('EXCHANGE', 'kraken')
+        self.symbol = os.getenv('SYMBOL', 'BTC/USD')
         self.timeframe = os.getenv('TIMEFRAME', '1h')
         self.risk_per_trade = float(os.getenv('RISK_PER_TRADE', 0.02))
         self.prediction_threshold = float(os.getenv('PREDICTION_THRESHOLD', 0.55))

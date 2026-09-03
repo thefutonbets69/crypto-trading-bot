@@ -59,8 +59,8 @@ def main():
     parser.add_argument('--candles', type=int, default=2000, help="Number of historical candles to train on")
     args = parser.parse_args()
 
-    exchange_name = os.getenv('EXCHANGE', 'binance')
-    symbol = os.getenv('SYMBOL', 'BTC/USDT')
+    exchange_name = os.getenv('EXCHANGE', 'kraken')
+    symbol = os.getenv('SYMBOL', 'BTC/USD')
     timeframe = os.getenv('TIMEFRAME', '1h')
     model_path = os.getenv('MODEL_PATH', './models/trading_model.keras')
     lookback = int(os.getenv('LOOKBACK_WINDOW', 60))

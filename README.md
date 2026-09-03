@@ -51,12 +51,12 @@ Edit `.env` with your settings:
 
 ```env
 # Exchange API
-EXCHANGE=binance
+EXCHANGE=kraken
 API_KEY=your_api_key
 API_SECRET=your_api_secret
 
 # Trading Parameters
-SYMBOL=BTC/USDT
+SYMBOL=BTC/USD
 TIMEFRAME=1h
 RISK_PER_TRADE=0.02  # 2% risk per trade
 PREDICTION_THRESHOLD=0.55  # Confidence threshold
@@ -162,8 +162,8 @@ either way.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EXCHANGE` | binance | CCXT exchange name |
-| `SYMBOL` | BTC/USDT | Trading pair |
+| `EXCHANGE` | kraken | CCXT exchange name |
+| `SYMBOL` | BTC/USD | Trading pair |
 | `TIMEFRAME` | 1h | Candle timeframe |
 | `POLL_INTERVAL_SECONDS` | (matches TIMEFRAME) | Seconds between trading cycles |
 | `LIVE_TRADING` | false | Set true to place real orders (see Going Live) |
@@ -175,13 +175,26 @@ either way.
 
 ## API Keys Setup
 
-### Binance (Recommended)
+### Kraken (Default)
 
-1. Log in to [Binance](https://www.binance.com)
-2. Go to **Account → API Management**
-3. Create new API key
-4. Enable trading permissions
-5. Copy API Key and Secret to `.env`
+1. Log in to [Kraken](https://www.kraken.com)
+2. Go to **Settings → API**
+3. Generate a new API key
+4. Enable "Query Funds" and "Create & Modify Orders" permissions (skip
+   withdrawal permissions entirely — the bot never needs them)
+5. Copy the API Key and Private Key to `.env` as `API_KEY`/`API_SECRET`
+
+### Other Exchanges
+
+The bot works with any [CCXT-supported exchange](https://docs.ccxt.com/#/README?id=exchanges)
+by changing `EXCHANGE` and `SYMBOL` in `.env` — e.g. `EXCHANGE=coinbase`,
+`EXCHANGE=bybit`, `EXCHANGE=okx`. One thing to know: **Binance.com blocks
+requests from most cloud/datacenter IPs** (including GitHub Codespaces and
+most VPS providers) with an HTTP 451 "restricted location" error,
+regardless of where you personally are — so `EXCHANGE=binance` only works
+running from your own residential connection. US-based traders wanting
+Binance specifically should use `EXCHANGE=binanceus` with a Binance.US
+account instead.
 
 ## Performance Metrics
 
