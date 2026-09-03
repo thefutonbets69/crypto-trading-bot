@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
+import joblib
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.exceptions import NotFittedError
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
@@ -126,31 +128,55 @@ class CryptoTradingModel:
         
         # Normalize using historical data
         recent_prices = recent_prices[-self.lookback_window:]
-        scaled = self.scaler.transform(recent_prices.reshape(-1, 1))
+        try:
+            scaled = self.scaler.transform(recent_prices.reshape(-1, 1))
+        except NotFittedError:
+            logger.warning(
+                "Scaler is not fitted (model was never trained). Falling back "
+                "to scaling this window in isolation; predictions will be "
+                "unreliable until you train the model with train.py."
+            )
+            scaled = self.scaler.fit_transform(recent_prices.reshape(-1, 1))
         
         # Reshape for LSTM [samples, timesteps, features]
         X = scaled.reshape(1, self.lookback_window, 1)
         
         prediction = self.model.predict(X, verbose=0)[0][0]
         return float(prediction)
-    
+
+    @staticmethod
+    def _scaler_path(model_path: str) -> str:
+        return f"{model_path}.scaler.pkl"
+
     def save_model(self, path: str) -> None:
         """
-        Save the trained model to disk.
-        
+        Save the trained model and its fitted scaler to disk.
+
         Args:
             path: Path to save the model
         """
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         self.model.save(path)
+        joblib.dump(self.scaler, self._scaler_path(path))
         logger.info(f"Model saved to {path}")
-    
+
     def load_model(self, path: str) -> None:
         """
-        Load a pre-trained model from disk.
-        
+        Load a pre-trained model and its fitted scaler from disk.
+
         Args:
             path: Path to load the model
         """
         self.model = load_model(path)
+        scaler_path = self._scaler_path(path)
+        if os.path.exists(scaler_path):
+            self.scaler = joblib.load(scaler_path)
+        else:
+            logger.warning(
+                f"No scaler found alongside {path}; predictions will fall back "
+                "to scaling each request's own window, which is inaccurate. "
+                "Retrain with train.py to produce a matching scaler."
+            )
         logger.info(f"Model loaded from {path}")

@@ -51,40 +51,48 @@ Edit `.env` with your settings:
 
 ```env
 # Exchange API
-EXCHANGE=binance
+EXCHANGE=kraken
 API_KEY=your_api_key
 API_SECRET=your_api_secret
 
 # Trading Parameters
-SYMBOL=BTC/USDT
+SYMBOL=BTC/USD
 TIMEFRAME=1h
 RISK_PER_TRADE=0.02  # 2% risk per trade
 PREDICTION_THRESHOLD=0.55  # Confidence threshold
 
 # Model
-MODEL_PATH=./models/trading_model.h5
+MODEL_PATH=./models/trading_model.keras
 LOOKBACK_WINDOW=60  # Number of candles for input
 ```
 
 ## Quick Start
 
-### Run the Bot
+### 1. Train the Model (do this first)
+
+Without this step the bot runs with an untrained, randomly-initialized
+network and its predictions are close to a coin flip. `train.py` fetches
+real historical candles for your configured `SYMBOL`/`TIMEFRAME` from the
+exchange's public API (no API key needed for this step) and trains + saves
+the model to `MODEL_PATH`:
+
+```bash
+python train.py --epochs 50 --candles 2000
+```
+
+### 2. Run the Bot
 
 ```bash
 python bot.py
 ```
 
-### Train the Model (Optional)
+This runs continuously — one trading cycle per candle (e.g. every hour for
+`TIMEFRAME=1h`), or every `POLL_INTERVAL_SECONDS` if you set that instead.
+Press `Ctrl+C` to stop; it prints a final stats summary on exit.
 
-```python
-from model import CryptoTradingModel
-import numpy as np
-
-model = CryptoTradingModel()
-historical_prices = np.array([...])  # Your price data
-model.train(historical_prices, epochs=50)
-model.save_model('./models/trading_model.h5')
-```
+By default the bot runs in **paper trading** mode: it simulates fills
+against live prices and never sends orders to the exchange, and it doesn't
+require API keys. To place real orders, see [Going Live](#going-live) below.
 
 ## How It Works
 
@@ -111,29 +119,82 @@ Price Data (60 candles) → LSTM Layer → Dropout → LSTM Layer → Dropout �
 - **Take Profit**: +10% from entry price
 - **Max Position**: Limited by account balance and risk parameters
 
+## Going Live
+
+Real order execution is off by default. It requires **both** of these set
+in `.env`:
+
+```env
+LIVE_TRADING=true
+CONFIRM_LIVE_TRADING=YES_I_UNDERSTAND_THE_RISK
+```
+
+If `LIVE_TRADING=true` without the exact confirmation string, the bot
+refuses to start rather than silently falling back to paper trading. Only
+enable this with API keys that have trading (not withdrawal) permissions,
+after you've watched the bot run in paper mode and reviewed its decisions.
+
+## Telegram Alerts
+
+Set both of these in `.env` to get a message on every buy, sell, and fatal
+error (works for both paper and live trading):
+
+```env
+TELEGRAM_BOT_TOKEN=123456:your-bot-token
+TELEGRAM_CHAT_ID=-1001234567890
+```
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`,
+   and copy the token it gives you into `TELEGRAM_BOT_TOKEN`.
+2. For a **channel**: add the bot as an admin of the channel, then use the
+   channel's numeric ID (looks like `-100xxxxxxxxxx`) or its `@username` as
+   `TELEGRAM_CHAT_ID`.
+3. For a **direct message**: send the bot any message first, then visit
+   `https://api.telegram.org/bot<your-token>/getUpdates` and read the
+   `chat.id` field from the response.
+
+Leave either variable unset to disable alerts — the bot runs normally
+either way.
+
 ## Configuration
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EXCHANGE` | binance | CCXT exchange name |
-| `SYMBOL` | BTC/USDT | Trading pair |
+| `EXCHANGE` | kraken | CCXT exchange name |
+| `SYMBOL` | BTC/USD | Trading pair |
 | `TIMEFRAME` | 1h | Candle timeframe |
+| `POLL_INTERVAL_SECONDS` | (matches TIMEFRAME) | Seconds between trading cycles |
+| `LIVE_TRADING` | false | Set true to place real orders (see Going Live) |
+| `CONFIRM_LIVE_TRADING` | (unset) | Must equal `YES_I_UNDERSTAND_THE_RISK` when LIVE_TRADING=true |
 | `RISK_PER_TRADE` | 0.02 | Risk percentage per trade |
 | `PREDICTION_THRESHOLD` | 0.55 | Model confidence threshold |
 | `LOOKBACK_WINDOW` | 60 | Historical candles for prediction |
-| `MODEL_PATH` | ./models/trading_model.h5 | Trained model location |
+| `MODEL_PATH` | ./models/trading_model.keras | Trained model location |
 
 ## API Keys Setup
 
-### Binance (Recommended)
+### Kraken (Default)
 
-1. Log in to [Binance](https://www.binance.com)
-2. Go to **Account → API Management**
-3. Create new API key
-4. Enable trading permissions
-5. Copy API Key and Secret to `.env`
+1. Log in to [Kraken](https://www.kraken.com)
+2. Go to **Settings → API**
+3. Generate a new API key
+4. Enable "Query Funds" and "Create & Modify Orders" permissions (skip
+   withdrawal permissions entirely — the bot never needs them)
+5. Copy the API Key and Private Key to `.env` as `API_KEY`/`API_SECRET`
+
+### Other Exchanges
+
+The bot works with any [CCXT-supported exchange](https://docs.ccxt.com/#/README?id=exchanges)
+by changing `EXCHANGE` and `SYMBOL` in `.env` — e.g. `EXCHANGE=coinbase`,
+`EXCHANGE=bybit`, `EXCHANGE=okx`. One thing to know: **Binance.com blocks
+requests from most cloud/datacenter IPs** (including GitHub Codespaces and
+most VPS providers) with an HTTP 451 "restricted location" error,
+regardless of where you personally are — so `EXCHANGE=binance` only works
+running from your own residential connection. US-based traders wanting
+Binance specifically should use `EXCHANGE=binanceus` with a Binance.US
+account instead.
 
 ## Performance Metrics
 
