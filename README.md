@@ -134,6 +134,28 @@ refuses to start rather than silently falling back to paper trading. Only
 enable this with API keys that have trading (not withdrawal) permissions,
 after you've watched the bot run in paper mode and reviewed its decisions.
 
+## Telegram Alerts
+
+Set both of these in `.env` to get a message on every buy, sell, and fatal
+error (works for both paper and live trading):
+
+```env
+TELEGRAM_BOT_TOKEN=123456:your-bot-token
+TELEGRAM_CHAT_ID=-1001234567890
+```
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`,
+   and copy the token it gives you into `TELEGRAM_BOT_TOKEN`.
+2. For a **channel**: add the bot as an admin of the channel, then use the
+   channel's numeric ID (looks like `-100xxxxxxxxxx`) or its `@username` as
+   `TELEGRAM_CHAT_ID`.
+3. For a **direct message**: send the bot any message first, then visit
+   `https://api.telegram.org/bot<your-token>/getUpdates` and read the
+   `chat.id` field from the response.
+
+Leave either variable unset to disable alerts — the bot runs normally
+either way.
+
 ## Configuration
 
 ### Environment Variables

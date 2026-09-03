@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import ccxt
 import numpy as np
 import pandas as pd
+import requests
 from model import CryptoTradingModel
 
 TIMEFRAME_SECONDS = {
@@ -81,9 +82,34 @@ class CryptoTradingBot:
         self.balance = float(os.getenv('INITIAL_BALANCE', 1000))
         self.trades_history = []
 
+        # Telegram alerting (optional): set both TELEGRAM_BOT_TOKEN and
+        # TELEGRAM_CHAT_ID to receive alerts; leave either unset to disable.
+        self.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+
         mode = "LIVE (real orders)" if self.live_trading else "PAPER (simulated)"
         logger.info(f"Trading bot initialized for {self.symbol} on {self.exchange_name} [{mode}]")
-    
+
+    def notify(self, message: str) -> None:
+        """
+        Send an alert to the configured Telegram chat/channel. No-ops
+        silently if Telegram isn't configured.
+
+        Args:
+            message: Plain-text message to send
+        """
+        if not self.telegram_token or not self.telegram_chat_id:
+            return
+        try:
+            response = requests.post(
+                f"https://api.telegram.org/bot{self.telegram_token}/sendMessage",
+                json={'chat_id': self.telegram_chat_id, 'text': message},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.warning(f"Failed to send Telegram alert: {e}")
+
     def _init_exchange(self) -> ccxt.Exchange:
         """
         Initialize CCXT exchange connection.
@@ -212,10 +238,17 @@ class CryptoTradingBot:
             self.entry_price = current_price
             self.position_size = position_size
             self.balance -= position_size * current_price
+
+            mode_tag = "LIVE" if self.live_trading else "PAPER"
+            self.notify(
+                f"[{mode_tag}] BUY {self.symbol} at ${current_price:.2f} "
+                f"(confidence {prediction:.2%}), size {position_size:.4f}"
+            )
             return True
 
         except Exception as e:
             logger.error(f"Error executing buy order: {e}")
+            self.notify(f"[ERROR] Buy order failed for {self.symbol}: {e}")
             return False
     
     def execute_sell(self, current_price: float, prediction: float) -> bool:
@@ -252,12 +285,18 @@ class CryptoTradingBot:
                 'profit_loss_pct': profit_loss_pct
             }
             self.trades_history.append(trade)
-            
+
             logger.info(f"SELL signal at {current_price} (confidence: {prediction:.2%}), P&L: {profit_loss_pct:.2f}%")
+            mode_tag = "LIVE" if self.live_trading else "PAPER"
+            self.notify(
+                f"[{mode_tag}] SELL {self.symbol} at ${current_price:.2f}, "
+                f"P&L: {profit_loss_pct:+.2f}% (${profit_loss:+.2f})"
+            )
             return True
-            
+
         except Exception as e:
             logger.error(f"Error executing sell order: {e}")
+            self.notify(f"[ERROR] Sell order failed for {self.symbol}: {e}")
             return False
     
     def run_trading_cycle(self) -> None:
@@ -318,6 +357,7 @@ def main():
     Main entry point for the trading bot. Runs continuously, one trading
     cycle per candle interval, until interrupted with Ctrl+C.
     """
+    bot = None
     try:
         bot = CryptoTradingBot()
         interval = int(os.getenv(
@@ -325,6 +365,7 @@ def main():
             TIMEFRAME_SECONDS.get(bot.timeframe, 3600)
         ))
         logger.info(f"Starting trading bot (cycle every {interval}s). Press Ctrl+C to stop.")
+        bot.notify(f"Trading bot started for {bot.symbol} on {bot.exchange_name}.")
 
         while True:
             bot.run_trading_cycle()
@@ -333,8 +374,11 @@ def main():
     except KeyboardInterrupt:
         logger.info("Stopping trading bot (Ctrl+C received)...")
         bot.print_stats()
+        bot.notify("Trading bot stopped (Ctrl+C).")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
+        if bot is not None:
+            bot.notify(f"[ERROR] Trading bot crashed: {e}")
         raise
 
 
