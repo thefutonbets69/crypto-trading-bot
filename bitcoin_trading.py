@@ -2,6 +2,15 @@ import numpy as np
 import pandas as pd
 
 def simulate_bitcoin_price(days=60, initial_price=50000.0):
+    """Return daily Bitcoin prices simulated using geometric Brownian motion.
+
+    Args:
+        days: Number of daily prices to generate, including the initial price.
+        initial_price: Starting Bitcoin price in USD.
+
+    Returns:
+        A list of simulated prices beginning with the initial price.
+    """
     mu = 0.5 # expected return
     sigma = 0.6 # volatility
     dt = 1.0 / 365.0
@@ -15,6 +24,7 @@ def simulate_bitcoin_price(days=60, initial_price=50000.0):
     return prices
 
 def main():
+    """Run a seeded 60-day moving-average strategy and print trades and results."""
     np.random.seed(42)
 
     days = 60
