@@ -1,0 +1,226 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MLB Gamecast</title>
+<script>
+/* ===== EDIT THESE ===== */
+const CONFIG = {
+  teamId: 144,          // team to follow. Braves = 144, Dodgers = 119
+  opponentId: 119,      // optional: only pick a game vs this team (0 = any opponent)
+  gamePk: "",           // optional: exact game number from the mlb.com/gameday URL (the long number at the end)
+  pollSeconds: 10,      // how often to check for updates
+  maxPlays: 5,          // how many plays to list
+  accent: "#00e5ff",    // match your other overlay files
+  accent2: "#ff2bd6",
+  demo: false           // true = fake game, for positioning the box in Streamlabs
+};
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--a:#00e5ff;--b:#ff2bd6}
+  html,body{margin:0;width:480px;height:640px;overflow:hidden;background:transparent;
+    font-family:Montserrat,Arial,sans-serif;color:#fff}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px}
+  .box{background:rgba(10,10,20,.9);border-radius:10px;padding:12px 16px}
+  .head{border-left:6px solid var(--a)}
+  .label{font-size:13px;font-weight:800;letter-spacing:2px;color:var(--a);display:flex;justify-content:space-between}
+  .label span:last-child{color:#fff;opacity:.85;letter-spacing:1px}
+  .teams{display:grid;grid-template-columns:1fr auto;row-gap:2px;margin-top:6px;font-size:28px;font-weight:800}
+  .teams .r{text-align:right;min-width:50px}
+  .teams .lead{color:var(--a)}
+  .sit{display:flex;align-items:center;gap:18px}
+  .diamond{flex:none}
+  .base{fill:rgba(255,255,255,.15);stroke:rgba(255,255,255,.6);stroke-width:2}
+  .base.on{fill:var(--b);stroke:var(--b)}
+  .count{font-size:22px;font-weight:800}
+  .outs{display:flex;gap:6px;margin-top:6px;align-items:center;font-size:14px;font-weight:700;opacity:.9}
+  .dot{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
+  .dot.on{background:var(--a);border-color:var(--a)}
+  .matchup{font-size:15px;line-height:1.5;margin-left:auto;text-align:right;max-width:210px}
+  .matchup b{color:var(--a);font-weight:700}
+  .list{display:flex;flex-direction:column;gap:6px;overflow:hidden}
+  .play{display:flex;gap:10px;align-items:flex-start;background:rgba(10,10,20,.85);border-radius:8px;
+    padding:9px 12px;border-left:4px solid rgba(255,255,255,.25);font-size:16px;line-height:1.3}
+  .play.new{animation:slide .6s ease-out}
+  @keyframes slide{from{opacity:0;transform:translateX(40px);box-shadow:0 0 24px var(--a)}to{opacity:1;transform:none}}
+  .tag{flex:none;font-size:13px;font-weight:800;background:rgba(255,255,255,.12);border-radius:4px;padding:3px 6px;margin-top:1px}
+  .play.scoring{border-left-color:var(--b);background:rgba(40,8,36,.9)}
+  .play.scoring .tag{background:var(--b);color:#000}
+  .txt{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .status{font-size:12px;opacity:.6;padding-left:4px}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="box head">
+    <div class="label"><span>MLB GAMECAST</span><span id="state">Loading…</span></div>
+    <div class="teams">
+      <div id="awayName"></div><div class="r" id="awayRuns"></div>
+      <div id="homeName"></div><div class="r" id="homeRuns"></div>
+    </div>
+  </div>
+  <div class="box sit" id="sit">
+    <svg class="diamond" width="84" height="64" viewBox="0 0 84 64">
+      <rect id="b2" class="base" x="32" y="4" width="20" height="20" transform="rotate(45 42 14)"/>
+      <rect id="b3" class="base" x="8" y="28" width="20" height="20" transform="rotate(45 18 38)"/>
+      <rect id="b1" class="base" x="56" y="28" width="20" height="20" transform="rotate(45 66 38)"/>
+    </svg>
+    <div>
+      <div class="count" id="count">0-0</div>
+      <div class="outs"><div class="dot" id="o1"></div><div class="dot" id="o2"></div><div class="dot" id="o3"></div><span>OUT</span></div>
+    </div>
+    <div class="matchup" id="matchup"></div>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="status" id="status"></div>
+</div>
+<script>
+const C = CONFIG, $ = id => document.getElementById(id);
+document.documentElement.style.setProperty('--a', C.accent);
+document.documentElement.style.setProperty('--b', C.accent2);
+const API = "https://statsapi.mlb.com/api";
+let shown = new Set(), firstRender = true, currentGame = null;
+
+async function getJSON(url){
+  const r = await fetch(url, {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function localDate(offsetDays){
+  const d = new Date(Date.now() + offsetDays * 864e5);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+// Find today's game for the team (yesterday too, so a late game that runs past midnight isn't lost).
+async function findGame(){
+  if (C.gamePk) return String(C.gamePk);
+  const url = `${API}/v1/schedule?sportId=1&teamId=${C.teamId}&startDate=${localDate(-1)}&endDate=${localDate(0)}`;
+  const sched = await getJSON(url);
+  let games = (sched.dates || []).flatMap(d => d.games || []);
+  if (C.opponentId) games = games.filter(g => [g.teams?.away?.team?.id, g.teams?.home?.team?.id].includes(C.opponentId));
+  const st = g => g.status?.abstractGameState;
+  const today = localDate(0);
+  const pick = games.find(g => st(g) === "Live")
+    || games.find(g => st(g) === "Preview" && (g.officialDate || "") >= today)
+    || games.filter(g => (g.officialDate || "") === today).pop()
+    || null;
+  return pick ? String(pick.gamePk) : null;
+}
+
+function render(feed){
+  const gd = feed.gameData || {}, ls = feed.liveData?.linescore || {};
+  const away = gd.teams?.away || {}, home = gd.teams?.home || {};
+  const ar = ls.teams?.away?.runs ?? 0, hr = ls.teams?.home?.runs ?? 0;
+  const abstract = gd.status?.abstractGameState;
+  $("awayName").textContent = away.teamName || away.abbreviation || "Away";
+  $("homeName").textContent = home.teamName || home.abbreviation || "Home";
+  const started = abstract !== "Preview";
+  $("awayRuns").textContent = started ? ar : "";
+  $("homeRuns").textContent = started ? hr : "";
+  $("awayRuns").className = "r" + (started && ar > hr ? " lead" : "");
+  $("homeRuns").className = "r" + (started && hr > ar ? " lead" : "");
+  $("awayName").className = started && ar > hr ? "lead" : "";
+  $("homeName").className = started && hr > ar ? "lead" : "";
+
+  // Top-right status: inning when live, otherwise the game state / first pitch time.
+  let state = gd.status?.detailedState || "";
+  if (abstract === "Live" && ls.currentInningOrdinal && /progress/i.test(state)) state = `${ls.inningState || ""} ${ls.currentInningOrdinal}`.trim();
+  if (abstract === "Preview" && gd.datetime?.dateTime)
+    state = "First pitch " + new Date(gd.datetime.dateTime).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  $("state").textContent = state;
+
+  // Situation: only during live play (hidden before/after the game and between half-innings).
+  const live = abstract === "Live" && !/middle|end/i.test(ls.inningState || "");
+  $("sit").classList.toggle("hidden", !live);
+  if (live) {
+    const off = ls.offense || {};
+    ["first", "second", "third"].forEach((b, i) => $("b" + (i + 1)).classList.toggle("on", !!off[b]));
+    $("count").textContent = `${ls.balls ?? 0}-${ls.strikes ?? 0}`;
+    [1, 2, 3].forEach(n => $("o" + n).classList.toggle("on", (ls.outs ?? 0) >= n));
+    const mu = [];
+    if (off.batter?.fullName) mu.push(`<div>AB: <b></b></div>`);
+    if (ls.defense?.pitcher?.fullName) mu.push(`<div>P: <b></b></div>`);
+    $("matchup").innerHTML = mu.join("");
+    const bs = $("matchup").querySelectorAll("b");
+    let k = 0;
+    if (off.batter?.fullName) bs[k++].textContent = off.batter.fullName;
+    if (ls.defense?.pitcher?.fullName) bs[k].textContent = ls.defense.pitcher.fullName;
+  }
+
+  // Completed at-bats / plays, newest first.
+  const plays = (feed.liveData?.plays?.allPlays || [])
+    .filter(p => p.about?.isComplete && p.result?.description)
+    .map(p => ({
+      id: String(p.about.atBatIndex ?? p.result.description),
+      tag: (p.about.halfInning === "top" ? "▲" : "▼") + (p.about.inning ?? ""),
+      text: p.result.description,
+      scoring: !!p.about.isScoringPlay,
+      score: `${away.abbreviation || ""} ${p.result.awayScore ?? ""}-${p.result.homeScore ?? ""} ${home.abbreviation || ""}`
+    }));
+  if (plays.length) renderPlays(plays);
+  else $("list").innerHTML = abstract === "Preview"
+    ? '<div class="play"><span class="txt">Play-by-play starts at first pitch.</span></div>' : "";
+}
+
+function renderPlays(plays){
+  const list = $("list");
+  list.innerHTML = "";
+  for (const p of plays.slice(-C.maxPlays).reverse()) {
+    const el = document.createElement("div");
+    el.className = "play" + (p.scoring ? " scoring" : "") + (!firstRender && !shown.has(p.id) ? " new" : "");
+    const tag = document.createElement("span");
+    tag.className = "tag"; tag.textContent = p.scoring ? `${p.tag} RUN · ${p.score}` : p.tag;
+    const txt = document.createElement("span");
+    txt.className = "txt"; txt.textContent = p.text;
+    el.append(tag, txt);
+    list.append(el);
+  }
+  plays.forEach(p => shown.add(p.id));
+  firstRender = false;
+}
+
+async function poll(){
+  try {
+    const pk = await findGame();
+    if (!pk) {
+      $("state").textContent = "No game today";
+      $("sit").classList.add("hidden"); $("list").innerHTML = ""; $("status").textContent = "";
+      return;
+    }
+    if (pk !== currentGame) { currentGame = pk; shown = new Set(); firstRender = true; }
+    render(await getJSON(`${API}/v1.1/game/${pk}/feed/live`));
+    $("status").textContent = "";
+  } catch (err) {
+    console.error("Gamecast update failed:", err);
+    $("status").textContent = "Reconnecting…";   // keep the last state on screen
+  }
+}
+
+function demoFeed(n){
+  const script = [
+    ["top", 6, "Ronald Acuña Jr. singles on a line drive to left fielder Teoscar Hernández.", false, 2, 3],
+    ["top", 6, "Ozzie Albies flies out to center fielder Andy Pages.", false, 2, 3],
+    ["top", 6, "Austin Riley homers (2) on a fly ball to left center field. Ronald Acuña Jr. scores.", true, 4, 3],
+    ["top", 6, "Matt Olson strikes out swinging.", false, 4, 3],
+    ["bottom", 6, "Shohei Ohtani doubles (1) on a line drive to right fielder.", false, 4, 3],
+    ["bottom", 6, "Mookie Betts singles on a ground ball to center fielder. Shohei Ohtani scores.", true, 4, 4],
+    ["bottom", 6, "Freddie Freeman grounds into a double play, second baseman to shortstop to first baseman.", false, 4, 4]
+  ];
+  const all = script.slice(0, n).map((s, i) => ({about: {atBatIndex: i, halfInning: s[0], inning: s[1], isComplete: true, isScoringPlay: s[3]},
+    result: {description: s[2], awayScore: s[4], homeScore: s[5]}}));
+  const last = all[all.length - 1];
+  return {gameData: {status: {abstractGameState: "Live", detailedState: "In Progress"},
+      teams: {away: {teamName: "Braves", abbreviation: "ATL"}, home: {teamName: "Dodgers", abbreviation: "LAD"}}},
+    liveData: {plays: {allPlays: all}, linescore: {currentInningOrdinal: "6th", inningState: last.about.halfInning === "top" ? "Top" : "Bottom",
+      balls: n % 4, strikes: n % 3, outs: n % 3, teams: {away: {runs: last.result.awayScore}, home: {runs: last.result.homeScore}},
+      offense: {batter: {fullName: "Will Smith"}, first: n % 2 ? {} : null, third: n % 3 ? {} : null}, defense: {pitcher: {fullName: "Chris Sale"}}}}};
+}
+
+if (C.demo) { let n = 3; render(demoFeed(n)); setInterval(() => render(demoFeed(n = n % 7 + 1)), 3000); }
+else { poll(); setInterval(poll, Math.max(5, C.pollSeconds) * 1000); }
+</script>
+</body>
+</html>

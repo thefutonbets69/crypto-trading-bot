@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Stream Overlay</title>
+<script>
+/* ===== EDIT THESE ===== */
+const CONFIG = {
+  scene: "ending",             // live | starting | brb | ending
+  channel: "YourChannelName",
+  title: "Today's stream title goes here",
+  socials: "youtube.com/@yourchannel  •  x.com/yourhandle",
+  ticker: "Welcome to the stream!  •  Drop a like and subscribe  •  Be kind in chat  •",
+  accent: "#00e5ff",              // main color
+  accent2: "#ff2bd6",             // second color
+  countdownMinutes: 5             // "Starting Soon" countdown
+};
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent;
+    font-family:Montserrat,Arial,sans-serif;color:#fff}
+  :root{--a:#00e5ff;--b:#ff2bd6}
+  .hidden{display:none!important}
+  /* LIVE layout (transparent so your game/screen shows through) */
+  .badge{position:absolute;top:40px;left:40px;display:flex;align-items:center;gap:16px;
+    background:rgba(10,10,20,.85);border-left:6px solid var(--a);padding:14px 24px;border-radius:8px}
+  .dot{width:16px;height:16px;border-radius:50%;background:#ff3040;animation:pulse 1.4s infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  .badge b{font-weight:800;letter-spacing:2px}
+  .badge span{font-size:22px;opacity:.9}
+  .clock{position:absolute;top:40px;right:40px;background:rgba(10,10,20,.85);padding:14px 24px;
+    border-radius:8px;font-size:26px;font-weight:800;border-right:6px solid var(--b)}
+  .cam{position:absolute;right:40px;bottom:130px;width:480px;height:270px;border-radius:12px;
+    border:5px solid var(--a);box-shadow:0 0 30px var(--a)}
+  .cam::after{content:"WEBCAM";position:absolute;left:0;top:-38px;background:var(--a);color:#000;
+    font-weight:800;font-size:18px;padding:4px 12px;border-radius:6px 6px 0 0}
+  .lower{position:absolute;left:40px;bottom:130px;background:rgba(10,10,20,.88);padding:18px 30px;
+    border-radius:10px;border-bottom:5px solid var(--a)}
+  .lower h1{margin:0;font-size:40px;font-weight:800}
+  .lower p{margin:6px 0 0;font-size:22px;color:var(--a)}
+  .ticker{position:absolute;left:0;right:0;bottom:40px;height:60px;background:rgba(10,10,20,.9);
+    border-top:3px solid var(--a);border-bottom:3px solid var(--b);overflow:hidden;white-space:nowrap}
+  .ticker div{display:inline-block;padding-left:100%;line-height:60px;font-size:26px;animation:scroll 30s linear infinite}
+  @keyframes scroll{to{transform:translateX(-100%)}}
+  /* Full-screen scenes */
+  .full{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 30% 30%,#1b1035,#07070f 70%)}
+  .full::before{content:"";position:absolute;inset:0;background:
+    linear-gradient(120deg,transparent 40%,color-mix(in srgb,var(--a) 25%,transparent) 50%,transparent 60%);
+    background-size:300% 300%;animation:sweep 8s linear infinite}
+  @keyframes sweep{from{background-position:100% 0}to{background-position:-100% 0}}
+  .full h1{position:relative;font-size:130px;margin:0;font-weight:800;
+    background:linear-gradient(90deg,var(--a),var(--b));-webkit-background-clip:text;color:transparent}
+  .full h2{position:relative;font-size:42px;margin:20px 0 0;font-weight:500}
+  .full .count{position:relative;font-size:90px;font-weight:800;margin-top:30px}
+  .full .soc{position:relative;font-size:28px;margin-top:40px;color:var(--a)}
+</style>
+</head>
+<body>
+<div id="live">
+  <div class="badge"><div class="dot"></div><b>LIVE</b><span id="t1"></span></div>
+  <div class="clock" id="clock"></div>
+  <div class="cam"></div>
+  <div class="lower"><h1 id="ch"></h1><p id="so"></p></div>
+  <div class="ticker"><div id="tk"></div></div>
+</div>
+<div id="full" class="full hidden">
+  <h1 id="big"></h1><h2 id="sub"></h2><div class="count" id="count"></div><div class="soc" id="so2"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id), C=CONFIG;
+document.documentElement.style.setProperty('--a',C.accent);
+document.documentElement.style.setProperty('--b',C.accent2);
+$('t1').textContent=C.title; $('ch').textContent=C.channel; $('so').textContent=C.socials;
+$('so2').textContent=C.socials; $('tk').textContent=(C.ticker+'   ').repeat(3);
+setInterval(()=>$('clock').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),1000);
+$('clock').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+const scenes={starting:["STARTING SOON",C.title],brb:["BE RIGHT BACK","Grab a snack — we'll be back shortly"],
+  ending:["THANKS FOR WATCHING","See you next stream, "+C.channel+" out!"]};
+if(scenes[C.scene]){
+  $('live').classList.add('hidden'); $('full').classList.remove('hidden');
+  $('big').textContent=scenes[C.scene][0]; $('sub').textContent=scenes[C.scene][1];
+  if(C.scene==='starting'){
+    let end=Date.now()+C.countdownMinutes*60000;
+    const tick=()=>{let s=Math.max(0,Math.round((end-Date.now())/1000));
+      $('count').textContent=s?String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'):'Any moment now…'};
+    tick(); setInterval(tick,1000);
+  }
+}
+</script>
+</body>
+</html>
