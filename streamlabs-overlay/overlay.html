@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Live Betting Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+<style>
+  :root {
+    --accent: #00E676;
+    --accent2: #FFC400;
+    --danger: #FF3D57;
+    --panel: rgba(10, 14, 22, 0.86);
+    --panel-2: rgba(22, 28, 40, 0.92);
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #F4F6FA;
+    --muted: #8B95A7;
+    --radius: 14px;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: transparent; color: var(--text); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body.preview {
+    background: radial-gradient(ellipse at 40% 40%, #2a3247 0%, #0b0e15 70%);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ---------- Brand bug (top-left) ---------- */
+  #brand {
+    position: absolute; top: 28px; left: 28px;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 22px 12px 12px;
+  }
+  .logo {
+    width: 58px; height: 58px; border-radius: 12px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #000));
+    color: #04140a; font-weight: 900; font-size: 24px; letter-spacing: -1px;
+  }
+  .brand-name { font-size: 24px; font-weight: 900; letter-spacing: .5px; line-height: 1.05; }
+  .brand-handle { font-size: 15px; color: var(--muted); font-weight: 600; margin-top: 3px; }
+  .live {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--danger); color: #fff; font-weight: 800; font-size: 14px;
+    letter-spacing: 1.5px; padding: 6px 12px; border-radius: 7px; margin-left: 6px;
+  }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; }
+  #clock { font-family: var(--mono); font-size: 17px; color: var(--muted); margin-left: 4px; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+  /* ---------- Scoreboard (top-right) ---------- */
+  #scoreboard {
+    position: absolute; top: 28px; right: 28px; width: 420px;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    padding: 0; overflow: hidden;
+  }
+  #scoreboard .league {
+    grid-column: 1 / -1; display: flex; justify-content: space-between;
+    padding: 8px 16px; background: var(--panel-2); border-bottom: 1px solid var(--line);
+    font-size: 13px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted);
+  }
+  #scoreboard .league b { color: var(--accent2); }
+  .team { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; }
+  .team .abbr { font-size: 24px; font-weight: 900; }
+  .team .score { font-family: var(--mono); font-size: 36px; font-weight: 700; }
+  .team.away { flex-direction: row; }
+  .team.home { flex-direction: row-reverse; }
+  .vs { font-size: 13px; color: var(--muted); font-weight: 800; }
+
+  /* ---------- Right column: bet slip + stats ---------- */
+  #rightcol {
+    position: absolute; top: 150px; right: 28px; width: 420px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    font-size: 14px; font-weight: 800; letter-spacing: 2px;
+  }
+  .card-head .tag {
+    font-size: 12px; letter-spacing: 1px; padding: 4px 9px; border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+  }
+  .bet {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+    padding: 13px 18px; border-bottom: 1px solid var(--line);
+    border-left: 4px solid transparent;
+    animation: slideIn .5s ease both;
+  }
+  .bet:last-child { border-bottom: 0; }
+  .bet .pick { font-size: 18px; font-weight: 800; }
+  .bet .meta { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .bet .odds { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent2); text-align: right; }
+  .bet .status {
+    justify-self: end; font-size: 11px; font-weight: 900; letter-spacing: 1.2px;
+    padding: 3px 8px; border-radius: 5px;
+  }
+  .bet.pending { border-left-color: var(--accent2); }
+  .bet.won { border-left-color: var(--accent); }
+  .bet.lost { border-left-color: var(--danger); opacity: .72; }
+  .bet.push { border-left-color: var(--muted); }
+  .bet.pending .status { background: color-mix(in srgb, var(--accent2) 20%, transparent); color: var(--accent2); }
+  .bet.won .status { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+  .bet.lost .status { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger); }
+  .bet.push .status { background: rgba(139,149,167,.2); color: var(--muted); }
+  .bet.lost .pick { text-decoration: line-through; text-decoration-color: var(--danger); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(30px) } to { opacity: 1; transform: none } }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; }
+  .stat { padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .stat:nth-child(2n) { border-right: 0; }
+  .stat:nth-last-child(-n+2) { border-bottom: 0; }
+  .stat .label { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); }
+  .stat .value { font-family: var(--mono); font-size: 24px; font-weight: 700; margin-top: 4px; }
+  .pos { color: var(--accent); }
+  .neg { color: var(--danger); }
+
+  /* ---------- Like / Subscribe / Share CTA ---------- */
+  #cta {
+    position: absolute; left: 28px; bottom: 104px;
+    display: flex; gap: 12px; align-items: stretch;
+    transform: translateX(-120%); opacity: 0;
+    transition: transform .7s cubic-bezier(.2,.9,.25,1.1), opacity .5s;
+  }
+  #cta.show { transform: none; opacity: 1; }
+  .cta-lead {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 22px; font-weight: 900;
+  }
+  .cta-lead small { font-size: 12px; letter-spacing: 2px; color: var(--muted); font-weight: 800; }
+  .cta-lead span { font-size: 22px; }
+  .cta-btn {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px; border-radius: 12px;
+    font-size: 20px; font-weight: 900; letter-spacing: .5px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    opacity: 0; transform: translateY(16px) scale(.95);
+  }
+  #cta.show .cta-btn { animation: pop .5s ease forwards; }
+  #cta.show .cta-btn:nth-of-type(2) { animation-delay: .35s; }
+  #cta.show .cta-btn:nth-of-type(3) { animation-delay: .55s; }
+  #cta.show .cta-btn:nth-of-type(4) { animation-delay: .75s; }
+  @keyframes pop { to { opacity: 1; transform: none } }
+  .cta-btn svg { width: 26px; height: 26px; flex: none; }
+  .btn-like { background: #fff; color: #0f0f0f; }
+  .btn-sub { background: #FF0033; color: #fff; }
+  .btn-share { background: var(--panel-2); color: #fff; border: 1px solid rgba(255,255,255,.18); }
+  #cta.show .btn-like svg { animation: thumb 1.6s ease 1.2s 2; transform-origin: 30% 80%; }
+  #cta.show .btn-sub .bell { animation: ring 1.2s ease 1.4s 3; transform-origin: 50% 10%; }
+  @keyframes thumb { 0%,100% { transform: none } 30% { transform: rotate(-18deg) scale(1.2) } 60% { transform: rotate(6deg) } }
+  @keyframes ring { 0%,100% { transform: none } 15% { transform: rotate(18deg) } 30% { transform: rotate(-16deg) } 45% { transform: rotate(10deg) } 60% { transform: rotate(-6deg) } }
+
+  /* ---------- Bottom ticker ---------- */
+  #ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    display: grid; grid-template-rows: 52px 28px;
+    background: rgba(6, 9, 14, 0.94); border-top: 2px solid var(--accent);
+  }
+  .tick-row { display: flex; align-items: center; overflow: hidden; }
+  .tick-label {
+    flex: none; height: 100%; display: flex; align-items: center; padding: 0 24px;
+    background: var(--accent); color: #04140a; font-weight: 900; letter-spacing: 2px; font-size: 16px;
+  }
+  .tick-track { flex: 1; overflow: hidden; height: 100%; position: relative;
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+  .tick-inner {
+    position: absolute; top: 0; height: 100%; display: flex; align-items: center;
+    white-space: nowrap; animation: scroll linear infinite; will-change: transform;
+  }
+  .tick-inner span { font-family: var(--mono); font-size: 18px; font-weight: 600; padding: 0 28px; }
+  .tick-inner span::after { content: "◆"; color: var(--accent2); margin-left: 56px; font-size: 11px; vertical-align: middle; }
+  @keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+  .tick-social {
+    flex: none; display: flex; gap: 18px; align-items: center; padding: 0 24px; height: 100%;
+    background: var(--panel-2); font-size: 14px; font-weight: 800; letter-spacing: 1px; color: var(--muted);
+  }
+  .tick-social b { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+  .tick-social svg { width: 16px; height: 16px; }
+  .disclaimer {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted);
+    background: rgba(0,0,0,.55); border-top: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+
+<!-- Brand bug -->
+<div id="brand" class="panel">
+  <div class="logo" id="logo">FB</div>
+  <div>
+    <div class="brand-name" id="channelName">CHANNEL</div>
+    <div class="brand-handle" id="channelHandle">@handle</div>
+  </div>
+  <div class="live"><i></i>LIVE</div>
+  <div id="clock">00:00</div>
+</div>
+
+<!-- Scoreboard -->
+<div id="scoreboard" class="panel">
+  <div class="league"><span id="league">LEAGUE</span><b id="gameStatus">--</b></div>
+  <div class="team away"><span class="abbr" id="awayName">AWY</span><span class="score" id="awayScore">0</span></div>
+  <div class="vs">@</div>
+  <div class="team home"><span class="abbr" id="homeName">HME</span><span class="score" id="homeScore">0</span></div>
+</div>
+
+<!-- Bet slip + bankroll -->
+<div id="rightcol">
+  <div class="panel">
+    <div class="card-head">LIVE BET SLIP <span class="tag" id="openCount">0 OPEN</span></div>
+    <div id="bets"></div>
+  </div>
+  <div class="panel">
+    <div class="card-head">BANKROLL <span class="tag" id="unitTag">1U = $0</span></div>
+    <div class="stats">
+      <div class="stat"><div class="label">TODAY P/L</div><div class="value" id="pl">+0.00u</div></div>
+      <div class="stat"><div class="label">RECORD</div><div class="value" id="record">0-0-0</div></div>
+      <div class="stat"><div class="label">AT RISK</div><div class="value" id="risk">0.00u</div></div>
+      <div class="stat"><div class="label">ROI</div><div class="value" id="roi">0.0%</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Like / Subscribe / Share -->
+<div id="cta">
+  <div class="cta-lead panel"><small>ENJOYING THE ACTION?</small><span>Support the stream</span></div>
+  <div class="cta-btn btn-like">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21h4V9H2v12zm20-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 1 6.59 7.59C6.22 7.95 6 8.45 6 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+    LIKE
+  </div>
+  <div class="cta-btn btn-sub">
+    <svg viewBox="0 0 24 24" fill="currentColor"><g class="bell"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></g></svg>
+    SUBSCRIBE
+  </div>
+  <div class="cta-btn btn-share">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/></svg>
+    SHARE
+  </div>
+</div>
+
+<!-- Ticker -->
+<div id="ticker">
+  <div class="tick-row">
+    <div class="tick-label">LIVE LINES</div>
+    <div class="tick-track"><div class="tick-inner" id="tickInner"></div></div>
+    <div class="tick-social">
+      <b><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21h4V9H2v12zm20-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 1 6.59 7.59C6.22 7.95 6 8.45 6 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>LIKE</b>
+      <b style="color:#FF3355"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>SUBSCRIBE</b>
+      <b><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z"/></svg>SHARE</b>
+    </div>
+  </div>
+  <div class="disclaimer" id="disclaimer"></div>
+</div>
+
+<script>
+(function () {
+  const C = window.OVERLAY_CONFIG || {};
+  const params = new URLSearchParams(location.search);
+  if (params.has("preview")) document.body.classList.add("preview");
+  const $ = (id) => document.getElementById(id);
+
+  // Theme
+  const root = document.documentElement.style;
+  if (C.theme) {
+    if (C.theme.accent) root.setProperty("--accent", C.theme.accent);
+    if (C.theme.accent2) root.setProperty("--accent2", C.theme.accent2);
+    if (C.theme.danger) root.setProperty("--danger", C.theme.danger);
+  }
+
+  // Brand
+  const ch = C.channel || {};
+  $("channelName").textContent = ch.name || "CHANNEL";
+  $("channelHandle").textContent = ch.handle || "";
+  $("logo").textContent = ch.initials || (ch.name || "?").slice(0, 2);
+
+  // Clock
+  const tick = () => {
+    $("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
+  tick(); setInterval(tick, 15000);
+
+  // Scoreboard
+  const g = C.game || {};
+  if (g.show === false) {
+    $("scoreboard").style.display = "none";
+    $("rightcol").style.top = "28px";
+  } else {
+    $("league").textContent = g.league || "";
+    $("gameStatus").textContent = g.status || "";
+    $("awayName").textContent = g.away?.name ?? "";
+    $("awayScore").textContent = g.away?.score ?? "";
+    $("homeName").textContent = g.home?.name ?? "";
+    $("homeScore").textContent = g.home?.score ?? "";
+  }
+
+  // Bets + bankroll math
+  const fmtOdds = (o) => (o > 0 ? "+" : "") + o;
+  const profitFor = (odds, stake) => (odds > 0 ? stake * odds / 100 : stake * 100 / Math.abs(odds));
+  const fmtU = (u, sign) => (sign && u > 0 ? "+" : "") + u.toFixed(2) + "u";
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  const bets = C.bets || [];
+  let pl = 0, risk = 0, settledStake = 0, w = 0, l = 0, p = 0, open = 0;
+  $("bets").innerHTML = bets.map((b, i) => {
+    const status = (b.status || "pending").toLowerCase();
+    const toWin = profitFor(b.odds, b.stake);
+    if (status === "won") { pl += toWin; settledStake += b.stake; w++; }
+    else if (status === "lost") { pl -= b.stake; settledStake += b.stake; l++; }
+    else if (status === "push") { settledStake += b.stake; p++; }
+    else { risk += b.stake; open++; }
+    return `<div class="bet ${status}" style="animation-delay:${i * 0.12}s">
+      <div class="pick">${esc(b.pick)}</div>
+      <div class="odds">${fmtOdds(b.odds)}</div>
+      <div class="meta">${esc(b.market || "")} · ${b.stake}u to win ${toWin.toFixed(2)}u</div>
+      <div class="status">${status.toUpperCase()}</div>
+    </div>`;
+  }).join("");
+
+  const br = C.bankroll || {};
+  const cur = br.currency || "$";
+  $("openCount").textContent = `${open} OPEN`;
+  $("unitTag").textContent = `1U = ${cur}${br.unitSize ?? 0}`;
+  const plEl = $("pl");
+  plEl.textContent = fmtU(pl, true);
+  plEl.className = "value " + (pl > 0 ? "pos" : pl < 0 ? "neg" : "");
+  $("record").textContent = `${w}-${l}-${p}`;
+  $("risk").textContent = fmtU(risk);
+  const roi = settledStake ? (pl / settledStake) * 100 : 0;
+  const roiEl = $("roi");
+  roiEl.textContent = (roi > 0 ? "+" : "") + roi.toFixed(1) + "%";
+  roiEl.className = "value " + (roi > 0 ? "pos" : roi < 0 ? "neg" : "");
+
+  // Ticker (content duplicated for a seamless loop)
+  const items = (C.ticker || []).map((t) => `<span>${esc(t)}</span>`).join("");
+  const inner = $("tickInner");
+  inner.innerHTML = items + items;
+  requestAnimationFrame(() => {
+    const pxPerSec = 90;
+    inner.style.animationDuration = Math.max(10, inner.scrollWidth / 2 / pxPerSec) + "s";
+  });
+  $("disclaimer").textContent = C.disclaimer || "";
+
+  // Like / Subscribe / Share rotation
+  const cta = $("cta");
+  const every = (C.cta?.showEverySeconds ?? 90) * 1000;
+  const visible = (C.cta?.visibleSeconds ?? 12) * 1000;
+  const showCta = () => {
+    cta.classList.add("show");
+    setTimeout(() => cta.classList.remove("show"), visible);
+  };
+  setTimeout(showCta, 3000);
+  setInterval(showCta, Math.max(every, visible + 2000));
+})();
+</script>
+</body>
+</html>
