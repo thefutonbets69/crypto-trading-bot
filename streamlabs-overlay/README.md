@@ -10,6 +10,8 @@ A transparent 1920×1080 overlay for live betting streams. It includes:
 - A **Like / Subscribe / Share** banner that slides in on a timer, plus an always-visible Like · Subscribe · Share strip in the ticker
 - A responsible-gambling disclaimer bar
 
+![Overlay preview](preview.png)
+
 ## Setup in Streamlabs Desktop
 
 1. Keep `overlay.html` and `config.js` together in the same folder.
